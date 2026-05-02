@@ -5506,11 +5506,11 @@ function buildAvatarUI(){
         <button class="av-chip" onclick="avQuickAction('repeat')">🔊 Repite</button>
       </div>
 
-      <!-- OpenRouter API Key (gratuita) -->
+      <!-- Groq API Key (gratuita) -->
       <div style="padding:8px 14px 2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span style="font-size:.72rem;font-weight:800;color:rgba(255,255,255,.55);white-space:nowrap;">🔑 OpenRouter Key</span>
+        <span style="font-size:.72rem;font-weight:800;color:rgba(255,255,255,.55);white-space:nowrap;">🔑 Groq Key</span>
         <div style="flex:1;min-width:0;position:relative;display:flex;align-items:center;">
-          <input id="avGeminiKey" type="text" placeholder="sk-or-v1-…  (pega aquí tu clave gratuita)"
+          <input id="avGeminiKey" type="text" placeholder="gsk_…  (pega aquí tu clave gratuita de Groq)"
             style="width:100%;padding:7px 36px 7px 12px;border-radius:20px;
                    border:1.5px solid rgba(100,180,255,.45);background:rgba(255,255,255,.12);
                    color:#e0f4ff;font-family:'Nunito';font-size:.8rem;outline:none;letter-spacing:.3px;"
@@ -5518,7 +5518,7 @@ function buildAvatarUI(){
           <button onclick="testGeminiKey()" title="Probar clave"
             style="position:absolute;right:6px;background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 4px;opacity:.7;">✓</button>
         </div>
-        <a href="https://openrouter.ai/keys" target="_blank"
+        <a href="https://console.groq.com/keys" target="_blank"
            style="font-size:.72rem;color:#81d4fa;text-decoration:none;white-space:nowrap;font-weight:800;">
            Obtener gratis →
         </a>
@@ -5779,7 +5779,7 @@ function buildAvWordList(){
 }
 
 /* ---- Claude API ---- */
-// ── OpenRouter API (tier gratuito, funciona desde archivo local) ──
+// ── Groq API (gratuita, rápida, fiable) ───────────────────────
 let _orKey = _store.get('eng_or_key') || '';
 
 function saveGeminiKey(){
@@ -5824,19 +5824,15 @@ TIP: [optional — Spanish learning tip]`;
 }
 
 async function orRequest(key, systemPrompt, messages){
-  const controller = new AbortController();
-  const timer = setTimeout(()=>controller.abort(), 20000);
   try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type':  'application/json',
-        'Authorization': `Bearer ${key}`,
-        'HTTP-Referer':  'https://english-adventure-app',
-        'X-Title':       'English Adventure'
+        'Authorization': `Bearer ${key}`
       },
       body: JSON.stringify({
-        model: 'meta-llama/llama-3.2-3b-instruct:free',
+        model: 'llama-3.1-8b-instant',
         max_tokens: 300,
         temperature: 0.9,
         messages: [
@@ -5844,9 +5840,8 @@ async function orRequest(key, systemPrompt, messages){
           ...messages
         ]
       }),
-      signal: controller.signal
+      signal: AbortSignal.timeout(20000)
     });
-    clearTimeout(timer);
     if(!res.ok){
       const err = await res.json().catch(()=>({}));
       throw new Error(err?.error?.message || `HTTP ${res.status}`);
@@ -5854,7 +5849,7 @@ async function orRequest(key, systemPrompt, messages){
     const data = await res.json();
     return data.choices?.[0]?.message?.content || '';
   } catch(e){
-    clearTimeout(timer);
+    if(e.name === 'TimeoutError') throw new Error('Timeout — sin respuesta del servidor');
     throw e;
   }
 }
@@ -5869,9 +5864,8 @@ async function testGeminiKey(){
     if(status){ status.style.color='#69f0ae'; status.textContent='✅ Conexión OK — ¡Max listo para hablar!'; }
   } catch(e){
     const msg = e.name==='AbortError' ? 'Sin conexión — revisa internet'
-              : e.message.includes('401') || e.message.includes('User not found') ? 'Clave incorrecta — cópiala de nuevo desde openrouter.ai/keys'
-              : e.message.includes('402') ? 'Sin créditos — añade saldo en openrouter.ai'
-              : e.message.includes('No endpoints') ? 'Modelo no disponible — contacta soporte'
+              : e.message.includes('401') || e.message.includes('Invalid API Key') ? 'Clave incorrecta — cópiala de nuevo desde console.groq.com/keys'
+              : e.message.includes('429') ? 'Demasiadas peticiones — espera un momento'
               : e.message;
     if(status){ status.style.color='#ff5252'; status.textContent='❌ ' + msg; }
   }
