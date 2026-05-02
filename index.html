@@ -5836,7 +5836,7 @@ async function orRequest(key, systemPrompt, messages){
         'X-Title':       'English Adventure'
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-lite-001',
+        model: 'meta-llama/llama-3.2-3b-instruct:free',
         max_tokens: 300,
         temperature: 0.9,
         messages: [
@@ -5868,8 +5868,10 @@ async function testGeminiKey(){
     const text = await orRequest(key, 'Reply with exactly: HELLO', [{ role:'user', content:'ping' }]);
     if(status){ status.style.color='#69f0ae'; status.textContent='✅ Conexión OK — ¡Max listo para hablar!'; }
   } catch(e){
-    const msg = e.name==='AbortError' ? 'Timeout — revisa tu conexión a internet'
-              : e.message.includes('401') ? 'Clave incorrecta — cópiala de nuevo desde openrouter.ai'
+    const msg = e.name==='AbortError' ? 'Sin conexión — revisa internet'
+              : e.message.includes('401') || e.message.includes('User not found') ? 'Clave incorrecta — cópiala de nuevo desde openrouter.ai/keys'
+              : e.message.includes('402') ? 'Sin créditos — añade saldo en openrouter.ai'
+              : e.message.includes('No endpoints') ? 'Modelo no disponible — contacta soporte'
               : e.message;
     if(status){ status.style.color='#ff5252'; status.textContent='❌ ' + msg; }
   }
