@@ -1897,6 +1897,12 @@
             <button class="sp2-mode-btn" id="modeSentBtn" onclick="setSp2Mode('sentence',this)">
               <span class="sp2-mode-icon">📖</span> Oraciones
             </button>
+            <button class="sp2-mode-btn" id="modeTranslateWordBtn" onclick="setSp2Mode('translate-word',this)">
+              <span class="sp2-mode-icon">🔄</span> Traduce palabras
+            </button>
+            <button class="sp2-mode-btn" id="modeTranslateSentBtn" onclick="setSp2Mode('translate-sent',this)">
+              <span class="sp2-mode-icon">💬</span> Traduce frases
+            </button>
           </div>
         </div>
 
@@ -1937,6 +1943,11 @@
 
         <!-- counter -->
         <div class="sp2-counter" id="sp2Counter">1 / 200</div>
+
+        <!-- translate-mode instruction (hidden by default) -->
+        <div id="sp2TranslateInstr" style="display:none;background:linear-gradient(135deg,#E8F5E9,#F1F8E9);border-radius:12px;padding:8px 14px;margin-bottom:6px;font-size:.82rem;font-weight:800;color:#2E7D32;border-left:3px solid #4CAF50;">
+          🇬🇧 Di la traducción en español 🇪🇸
+        </div>
 
         <!-- emoji (always visible) -->
         <div class="sp2-emoji" id="sp2Emoji">🌟</div>
@@ -4647,25 +4658,6 @@ let sp2CatFilter = 'all';
 let sp2Listening = false;
 let sp2Recognition = null;
 
-function sp2BuildPools(){
-  const base = spkPool();
-  const cats = sp2CatFilter === 'all' ? base : base.filter(w=>w.cat===sp2CatFilter);
-  sp2WordList = cats;
-  sp2SentList = [];
-  cats.forEach(w=>w.sentences.forEach(s=>sp2SentList.push({word:w,sentence:s})));
-}
-
-function sp2BuildOrder(){
-  const len = sp2Mode==='word' ? sp2WordList.length : sp2SentList.length;
-  sp2WordOrder = [...Array(len).keys()];
-  sp2Shuffle_arr(sp2WordOrder);
-  sp2Idx = 0;
-}
-
-function sp2Shuffle_arr(arr){
-  for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}
-}
-
 function sp2BuildCatBtns(){
   const div=document.getElementById('sp2CatBtns');
   if(!div) return;
@@ -4686,7 +4678,82 @@ function setSp2Mode(mode,btn){
   sp2Mode=mode;
   document.querySelectorAll('.sp2-mode-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
+  // In translate modes, force-hide Spanish and auto-set visibility
+  const isTranslate = mode.startsWith('translate');
+  if(isTranslate){
+    // Show English (the prompt), hide Spanish (the answer), hide phonetics
+    sp2ShowText=true; sp2ShowPron=false; sp2ShowTrans=false;
+    const set=(id,val)=>{const b=document.getElementById(id);if(b)b.classList.toggle('active',val);};
+    set('togTextBtn',true); set('togPronBtn',false); set('togTransBtn',false);
+  }
+  const instr = document.getElementById('sp2TranslateInstr');
+  if(instr) instr.style.display = isTranslate ? '' : 'none';
+  const micLbl = document.getElementById('sp2MicLabel');
+  if(micLbl) micLbl.textContent = isTranslate ? 'Toca y di la traducción en español' : 'Toca para pronunciar';
   sp2BuildPools(); sp2BuildOrder(); sp2Render();
+}
+
+function sp2IsTranslateMode(){ return sp2Mode.startsWith('translate'); }
+
+function sp2CurrentTarget(){
+  if(sp2Mode==='word' || sp2Mode==='translate-word'){
+    const w=sp2WordList[sp2WordOrder[sp2Idx]];
+    if(!w) return {en:'',pron:'',es:'',emoji:'⭐'};
+    return {en:w.en, pron:w.pron, es:w.es, emoji:w.emoji};
+  } else {
+    const item=sp2SentList[sp2WordOrder[sp2Idx]];
+    if(!item) return {en:'',pron:'',es:'',emoji:'⭐'};
+    const {word,sentence}=item;
+    return {en:sentence.en, pron:sentencePhon(sentence.en), es:sentence.es, emoji:word.emoji};
+  }
+}
+
+function sp2BuildPools(){
+  const base = spkPool();
+  const cats = sp2CatFilter === 'all' ? base : base.filter(w=>w.cat===sp2CatFilter);
+  sp2WordList = cats;
+  sp2SentList = [];
+  cats.forEach(w=>w.sentences.forEach(s=>sp2SentList.push({word:w,sentence:s})));
+}
+
+function sp2BuildOrder(){
+  const isWord = sp2Mode==='word' || sp2Mode==='translate-word';
+  const len = isWord ? sp2WordList.length : sp2SentList.length;
+  sp2WordOrder = [...Array(len).keys()];
+  sp2Shuffle_arr(sp2WordOrder);
+  sp2Idx = 0;
+}
+
+function sp2Render(){
+  const isWord = sp2Mode==='word' || sp2Mode==='translate-word';
+  const total = isWord ? sp2WordList.length : sp2SentList.length;
+  if(!total) return;
+  const item=sp2CurrentTarget();
+  document.getElementById('sp2Counter').textContent=`${sp2Idx+1} / ${total}`;
+  document.getElementById('sp2Emoji').textContent=item.emoji;
+  document.getElementById('sp2En').textContent=item.en;
+  document.getElementById('sp2Pron').textContent='📢 '+item.pron;
+  document.getElementById('sp2Es').textContent='🇪🇸 '+item.es;
+  document.getElementById('sp2Result').classList.add('hidden');
+  const isTranslate = sp2IsTranslateMode();
+  const micLbl = document.getElementById('sp2MicLabel');
+  if(micLbl) micLbl.textContent = isTranslate ? 'Toca y di la traducción en español' : 'Toca para pronunciar';
+  const mb=document.getElementById('sp2MicBtn');
+  if(mb){mb.classList.remove('listening');mb.textContent='🎤';}
+  sp2ApplyVis();
+  const em=document.getElementById('sp2Emoji');
+  if(em){em.style.transform='scale(1.3)';setTimeout(()=>em.style.transform='scale(1)',200);}
+}
+
+function sp2Next(){
+  const isWord = sp2Mode==='word'||sp2Mode==='translate-word';
+  const t = isWord ? sp2WordList.length : sp2SentList.length;
+  sp2Idx=(sp2Idx+1)%t; sp2Render();
+}
+function sp2Prev(){
+  const isWord = sp2Mode==='word'||sp2Mode==='translate-word';
+  const t = isWord ? sp2WordList.length : sp2SentList.length;
+  sp2Idx=(sp2Idx-1+t)%t; sp2Render();
 }
 
 function toggleVis(which,btn){
@@ -4769,14 +4836,18 @@ function toggleSp2Recording(){
 }
 
 function startSp2Recording(){
+  const isTranslate = sp2IsTranslateMode();
   sp2Recognition=new SpeechRecognition();
-  sp2Recognition.lang='en-US';
+  sp2Recognition.lang = isTranslate ? 'es-ES' : 'en-US';
   sp2Recognition.continuous=false;
   sp2Recognition.interimResults=false;
   sp2Recognition.maxAlternatives=3;
   const btn=document.getElementById('sp2MicBtn');
   const lbl=document.getElementById('sp2MicLabel');
-  sp2Recognition.onstart=()=>{sp2Listening=true;btn.classList.add('listening');btn.textContent='⏹';lbl.textContent='🎙️ ¡Escuchando!…';};
+  sp2Recognition.onstart=()=>{
+    sp2Listening=true;btn.classList.add('listening');btn.textContent='⏹';
+    lbl.textContent = isTranslate ? '🎙️ ¡Escuchando en español!…' : '🎙️ ¡Escuchando!…';
+  };
   sp2Recognition.onresult=e=>{sp2ShowResult(e.results[0][0].transcript);};
   sp2Recognition.onerror=e=>{
     sp2Listening=false;btn.classList.remove('listening');btn.textContent='🎤';
@@ -4784,7 +4855,10 @@ function startSp2Recording(){
     else if(e.error==='no-speech') lbl.textContent='No te escuché. ¡Otra vez!';
     else lbl.textContent='Error. Inténtalo de nuevo.';
   };
-  sp2Recognition.onend=()=>{sp2Listening=false;btn.classList.remove('listening');btn.textContent='🎤';lbl.textContent='Toca para pronunciar';};
+  sp2Recognition.onend=()=>{
+    sp2Listening=false;btn.classList.remove('listening');btn.textContent='🎤';
+    lbl.textContent = isTranslate ? 'Toca y di la traducción en español' : 'Toca para pronunciar';
+  };
   sp2Recognition.start();
 }
 
@@ -4798,13 +4872,16 @@ function levenshtein(a,b){
 }
 
 function sp2ShowResult(heard){
-  const target=sp2CurrentTarget().en;
+  const item = sp2CurrentTarget();
+  const isTranslate = sp2IsTranslateMode();
+  // In translate mode compare against Spanish; otherwise against English
+  const target = isTranslate ? item.es : item.en;
   const tWords=normalize(target).split(' ').filter(Boolean);
   const hWords=normalize(heard).split(' ').filter(Boolean);
   let correct=0;
   const chips=tWords.map(tw=>{const ok=hWords.some(hw=>hw===tw||levenshtein(hw,tw)<=1);if(ok)correct++;return{w:tw,ok};});
   let pct;
-  if(sp2Mode==='word'&&tWords.length===1){
+  if((sp2Mode==='word'||sp2Mode==='translate-word')&&tWords.length===1){
     const ok=hWords.some(hw=>hw===tWords[0]||levenshtein(hw,tWords[0])<=1);
     pct=ok?100:0; chips[0].ok=ok; if(ok)correct=1;
   } else { pct=tWords.length>0?Math.round(correct/tWords.length*100):0; }
@@ -4815,12 +4892,19 @@ function sp2ShowResult(heard){
   else if(pct>=80){stars='⭐⭐⭐⭐';msg='¡Muy bien!';cls='great';playSound('correct');}
   else if(pct>=60){stars='⭐⭐⭐';msg='¡Bien! Sigue así.';cls='ok';playSound('correct');}
   else if(pct>=30){stars='⭐⭐';msg='¡Inténtalo otra vez!';cls='ok';}
-  else{stars='⭐';msg='¡Escucha y repite!';cls='bad';playSound('wrong');}
+  else{stars='⭐';msg=isTranslate?'¡Recuerda la traducción!':'¡Escucha y repite!';cls='bad';playSound('wrong');}
   document.getElementById('sp2Stars').textContent=stars;
   document.getElementById('sp2Msg').textContent=pct+'% — '+msg;
   document.getElementById('sp2Msg').className='sp2-msg '+cls;
   document.getElementById('sp2Result').classList.remove('hidden');
-  if(pct<100) setTimeout(()=>speak(target),700);
+  // In translate mode: reveal the Spanish answer and speak English
+  if(isTranslate){
+    const esEl=document.getElementById('sp2Es');
+    if(esEl) esEl.classList.remove('sp2-hidden');
+    if(pct<100) setTimeout(()=>speak(item.en), 700);
+  } else {
+    if(pct<100) setTimeout(()=>speak(target),700);
+  }
   trackSpeaking(pct);
 }
 
