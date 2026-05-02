@@ -5791,6 +5791,21 @@ function loadGeminiKey(){
   if(inp && _orKey) inp.value = _orKey;
 }
 
+function buildLearnedContext(){
+  const learnedList = [...learned];
+  if(learnedList.length === 0) return '';
+  const pool = (avEtapa===1) ? words : (avEtapa===2) ? allWords500 : allWords1000;
+  const learnedWords = pool.filter(w => learnedList.includes(w.en));
+  if(learnedWords.length === 0) return '';
+  const groups = {};
+  learnedWords.forEach(w=>{ (groups[w.cat]=groups[w.cat]||[]).push(w.en); });
+  let out = '\nWORDS THIS STUDENT HAS ALREADY STUDIED (weave these into conversation naturally):\n';
+  for(const [cat,ws] of Object.entries(groups)){
+    out += `  ${cat}: ${ws.slice(0,20).join(', ')}\n`;
+  }
+  return out;
+}
+
 function buildMaxSystemPrompt(specialMode){
   const levelPrompt = LEVEL_PROMPTS[avLevel];
   const topicPrompt = TOPIC_PROMPTS[avTopic] || TOPIC_PROMPTS.free;
