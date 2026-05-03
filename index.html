@@ -1149,10 +1149,11 @@
 .map-scroll{
   flex:1;overflow-y:auto;overflow-x:hidden;
   position:relative;scrollbar-width:none;min-height:0;
+  -webkit-overflow-scrolling:touch;
 }
 .map-scroll::-webkit-scrollbar{display:none;}
 
-#mapSvg{display:block;width:100%;height:720px;cursor:default;}
+#mapSvg{display:block;width:100%;height:100%;min-height:720px;cursor:default;}
 
 /* Explorer CSS animations */
 #expLegL{transform-box:fill-box;transform-origin:center top;}
@@ -1738,7 +1739,6 @@
   <button class="tab active" onclick="showSection('words',this)">📚 Palabras</button>
   <button class="tab" onclick="showSection('flashcards',this)">🃏 Flashcards</button>
   <button class="tab" onclick="showSection('quiz',this)">🧠 Quiz</button>
-  <button class="tab" onclick="showSection('sentences',this)">📝 Oraciones</button>
   <button class="tab" onclick="showSection('speaking',this)">🎤 ¡Pronuncia!</button>
   <button class="tab" onclick="showSection('avatar',this)">🤖 Habla con Max</button>
   <button class="tab" onclick="showSection('stats',this)">📊 Mi Progreso</button>
@@ -4555,6 +4555,7 @@ function checkQuizSentence(answer, btn){
 }
 function buildSentCatFilters(){
   const div=document.getElementById('sentCatFilters');
+  if(!div) return;
   div.innerHTML=`<button class="cat-btn active" style="--cc:#1A237E;--ccl:#E8EAF6" onclick="filterSentCat('all',this)">🌟 Todas</button>`;
   categories.forEach(c=>{
     div.innerHTML+=`<button class="cat-btn cat-${c.id}" onclick="filterSentCat('${c.id}',this)">${c.name}</button>`;
@@ -4582,6 +4583,7 @@ function toggleSentAudioOnly(){
 
 function renderSentences(){
   const container=document.getElementById('sentencesList');
+  if(!container) return; // section not in DOM
   const pool = sentPool();
   const filtered=sentActiveCat==='all'?pool:pool.filter(w=>w.cat===sentActiveCat);
   container.innerHTML=filtered.map(w=>{
@@ -4676,6 +4678,7 @@ function sp2SetCat(cat,btn){
 
 function setSp2Mode(mode,btn){
   sp2Mode=mode;
+  sp2Idx=0;
   document.querySelectorAll('.sp2-mode-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   // In translate modes, force-hide Spanish and auto-set visibility
@@ -4696,16 +4699,21 @@ function setSp2Mode(mode,btn){
 function sp2IsTranslateMode(){ return sp2Mode.startsWith('translate'); }
 
 function sp2CurrentTarget(){
-  if(sp2Mode==='word' || sp2Mode==='translate-word'){
-    const w=sp2WordList[sp2WordOrder[sp2Idx]];
+  const isWord = sp2Mode==='word' || sp2Mode==='translate-word';
+  if(isWord){
+    const w = sp2WordList[sp2WordOrder[sp2Idx]] || sp2WordList[0];
     if(!w) return {en:'',pron:'',es:'',emoji:'⭐'};
     return {en:w.en, pron:w.pron, es:w.es, emoji:w.emoji};
   } else {
-    const item=sp2SentList[sp2WordOrder[sp2Idx]];
+    const item = sp2SentList[sp2WordOrder[sp2Idx]] || sp2SentList[0];
     if(!item) return {en:'',pron:'',es:'',emoji:'⭐'};
     const {word,sentence}=item;
     return {en:sentence.en, pron:sentencePhon(sentence.en), es:sentence.es, emoji:word.emoji};
   }
+}
+
+function sp2Shuffle_arr(arr){
+  for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}
 }
 
 function sp2BuildPools(){
@@ -4796,36 +4804,6 @@ function revealSp2(){
   setTimeout(()=>sp2ApplyVis(),2500);
 }
 
-function sp2CurrentTarget(){
-  if(sp2Mode==='word'){
-    const w=sp2WordList[sp2WordOrder[sp2Idx]];
-    return {en:w.en, pron:w.pron, es:w.es, emoji:w.emoji};
-  } else {
-    const {word,sentence}=sp2SentList[sp2WordOrder[sp2Idx]];
-    return {en:sentence.en, pron:sentencePhon(sentence.en), es:sentence.es, emoji:word.emoji};
-  }
-}
-
-function sp2Render(){
-  const total=sp2Mode==='word'?sp2WordList.length:sp2SentList.length;
-  if(!total) return;
-  const item=sp2CurrentTarget();
-  document.getElementById('sp2Counter').textContent=`${sp2Idx+1} / ${total}`;
-  document.getElementById('sp2Emoji').textContent=item.emoji;
-  document.getElementById('sp2En').textContent=item.en;
-  document.getElementById('sp2Pron').textContent='📢 '+item.pron;
-  document.getElementById('sp2Es').textContent='🇪🇸 '+item.es;
-  document.getElementById('sp2Result').classList.add('hidden');
-  document.getElementById('sp2MicLabel').textContent='Toca para pronunciar';
-  const mb=document.getElementById('sp2MicBtn');
-  if(mb){mb.classList.remove('listening');mb.textContent='🎤';}
-  sp2ApplyVis();
-  const em=document.getElementById('sp2Emoji');
-  if(em){em.style.transform='scale(1.3)';setTimeout(()=>em.style.transform='scale(1)',200);}
-}
-
-function sp2Next(){const t=sp2Mode==='word'?sp2WordList.length:sp2SentList.length;sp2Idx=(sp2Idx+1)%t;sp2Render();}
-function sp2Prev(){const t=sp2Mode==='word'?sp2WordList.length:sp2SentList.length;sp2Idx=(sp2Idx-1+t)%t;sp2Render();}
 function sp2Shuffle(){sp2Shuffle_arr(sp2WordOrder);sp2Idx=0;sp2Render();}
 function sp2Listen(){const item=sp2CurrentTarget();speak(item.en);}
 
@@ -6990,6 +6968,9 @@ function showMap(){
   map.classList.add('visible');
   map.classList.remove('hiding');
   updateMapProgress();
+  // Scroll to bottom so node 1 (Explorador) is visible on first open
+  const scroll = document.getElementById('mapScroll');
+  if(scroll) setTimeout(()=>{ scroll.scrollTop = scroll.scrollHeight; }, 80);
 }
 
 let _hideMapTimer = null;
@@ -7211,35 +7192,36 @@ function syncAllEtapas(n){
 let _tooltipTimer = null;
 function nodeClick(stage){
   if(stage === 1 || stage === 2 || stage === 3){
-    const bubbles = {1:'¡Volviendo!', 2:'¡Aventurero!', 3:'¡Experto!'};
+    const bubbles = {1:'¡Empezando!', 2:'¡Aventurero!', 3:'¡Experto!'};
     setExplorerBubble(bubbles[stage] || '¡Vamos!');
-    moveExplorerToStage(stage, ()=>{
-      syncAllEtapas(stage);
+    const doEnter = ()=>{
+      // Hide map FIRST — no dependencies, can't fail
       hideMap();
-    });
-    const seg=(id,on)=>{ const el=document.getElementById(id); if(el) el.style.opacity=on?'1':'0'; };
-    seg('completedSeg1', stage >= 2);
-    seg('completedSeg2', stage >= 3);
+      // Then sync sections (errors here don't prevent navigation)
+      try { syncAllEtapas(stage); } catch(e){ console.warn('syncAllEtapas:', e); }
+    };
+    if(stage === currentEtapa){
+      doEnter();
+    } else {
+      const seg=(id,on)=>{ const el=document.getElementById(id); if(el) el.style.opacity=on?'1':'0'; };
+      seg('completedSeg1', stage >= 2);
+      seg('completedSeg2', stage >= 3);
+      moveExplorerToStage(stage, doEnter);
+    }
   } else {
-    /* Locked — show tooltip */
     const tip = document.getElementById('mapTooltip');
     if(!tip) return;
-    /* Position tooltip in viewport coords from SVG node */
     const svg = document.getElementById('mapSvg');
     const nodeCoords = MAP_NODE_COORDS[stage-1];
     if(svg && nodeCoords){
       const rect = svg.getBoundingClientRect();
-      const svgW = rect.width, svgH = 680;
-      const scale = Math.min(svgW/400, rect.height/svgH);
+      const scale = Math.min(rect.width/400, rect.height/720);
       const offsetX = (rect.width  - 400*scale) / 2;
-      const offsetY = (rect.height - svgH*scale) / 2;
-      const screenX = rect.left + offsetX + nodeCoords.x * scale;
-      const screenY = rect.top  + offsetY + nodeCoords.y * scale;
-      tip.style.left = (screenX - 120) + 'px';
-      tip.style.top  = (screenY - 55)  + 'px';
+      const offsetY = (rect.height - 720*scale) / 2;
+      tip.style.left = (rect.left + offsetX + nodeCoords.x*scale - 120) + 'px';
+      tip.style.top  = (rect.top  + offsetY + nodeCoords.y*scale -  55) + 'px';
     }
-    tip.textContent = stage===4 ? '🔒 Disponible con 2000 palabras'
-                                  : '🔒 Disponible con 3000 palabras';
+    tip.textContent = stage===4 ? '🔒 Disponible con 2000 palabras' : '🔒 Disponible con 3000 palabras';
     tip.classList.add('show');
     clearTimeout(_tooltipTimer);
     _tooltipTimer = setTimeout(()=>tip.classList.remove('show'), 2200);
