@@ -4849,39 +4849,74 @@ function levenshtein(a,b){
   return d[m][n];
 }
 
+/* Expand "último/a" → ["último","ultima"], "actor/actriz" → ["actor","actriz"] */
+function expandGender(s){
+  const variants = new Set([normalize(s)]);
+  // Pattern: word ending in o/a → accept both
+  const m1 = s.match(/^(.+?)o\/a$/i);
+  if(m1){ variants.add(normalize(m1[1]+'o')); variants.add(normalize(m1[1]+'a')); }
+  // Pattern: two forms separated by / → accept both
+  const m2 = s.match(/^(.+?)\/(.+)$/);
+  if(m2){ variants.add(normalize(m2[1])); variants.add(normalize(m2[2])); variants.add(normalize(m2[1]+m2[2])); }
+  // Remove accent-stripped version too
+  const noAccent = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  [...variants].forEach(v => variants.add(noAccent(v)));
+  return [...variants];
+}
+
 function sp2ShowResult(heard){
   const item = sp2CurrentTarget();
   const isTranslate = sp2IsTranslateMode();
-  // In translate mode compare against Spanish; otherwise against English
   const target = isTranslate ? item.es : item.en;
-  const tWords=normalize(target).split(' ').filter(Boolean);
-  const hWords=normalize(heard).split(' ').filter(Boolean);
-  let correct=0;
-  const chips=tWords.map(tw=>{const ok=hWords.some(hw=>hw===tw||levenshtein(hw,tw)<=1);if(ok)correct++;return{w:tw,ok};});
+
+  // Build all accepted forms (handles género masculine/femenino)
+  const targetForms = isTranslate ? expandGender(target) : [normalize(target)];
+  const heardNorm   = normalize(heard);
+  const heardWords  = heardNorm.split(' ').filter(Boolean);
+
+  // For single-word targets: accept if ANY heard word matches ANY target form
+  const tWords = normalize(target).split(' ').filter(Boolean);
   let pct;
-  if((sp2Mode==='word'||sp2Mode==='translate-word')&&tWords.length===1){
-    const ok=hWords.some(hw=>hw===tWords[0]||levenshtein(hw,tWords[0])<=1);
-    pct=ok?100:0; chips[0].ok=ok; if(ok)correct=1;
-  } else { pct=tWords.length>0?Math.round(correct/tWords.length*100):0; }
-  document.getElementById('sp2Heard').textContent='🎙 Escuché: "'+heard+'"';
-  document.getElementById('sp2Chips').innerHTML=chips.map(c=>`<span class="sp2-chip ${c.ok?'ok':'miss'}">${c.ok?'✓':'✗'} ${c.w}</span>`).join('');
-  let stars,msg,cls;
-  if(pct===100){stars='⭐⭐⭐⭐⭐';msg='¡PERFECTO!';cls='great';fireConfetti();playSound('perfect');}
-  else if(pct>=80){stars='⭐⭐⭐⭐';msg='¡Muy bien!';cls='great';playSound('correct');}
-  else if(pct>=60){stars='⭐⭐⭐';msg='¡Bien! Sigue así.';cls='ok';playSound('correct');}
-  else if(pct>=30){stars='⭐⭐';msg='¡Inténtalo otra vez!';cls='ok';}
-  else{stars='⭐';msg=isTranslate?'¡Recuerda la traducción!':'¡Escucha y repite!';cls='bad';playSound('wrong');}
-  document.getElementById('sp2Stars').textContent=stars;
-  document.getElementById('sp2Msg').textContent=pct+'% — '+msg;
-  document.getElementById('sp2Msg').className='sp2-msg '+cls;
-  document.getElementById('sp2Result').classList.remove('hidden');
-  // In translate mode: reveal the Spanish answer and speak English
-  if(isTranslate){
-    const esEl=document.getElementById('sp2Es');
-    if(esEl) esEl.classList.remove('sp2-hidden');
-    if(pct<100) setTimeout(()=>speak(item.en), 700);
+  let chips;
+
+  if((sp2Mode==='word'||sp2Mode==='translate-word') && tWords.length <= 2){
+    // Accept if heard matches any variant
+    const ok = targetForms.some(form =>
+      heardWords.some(hw => hw === form || levenshtein(hw, form) <= 1)
+    );
+    pct   = ok ? 100 : 0;
+    chips = targetForms.slice(0,2).map(f=>({w:f,ok}));
   } else {
-    if(pct<100) setTimeout(()=>speak(target),700);
+    // Multi-word: word-by-word
+    chips = tWords.map(tw=>{
+      const ok = heardWords.some(hw=> hw===tw || levenshtein(hw,tw)<=1);
+      return {w:tw, ok};
+    });
+    const correct = chips.filter(c=>c.ok).length;
+    pct = tWords.length > 0 ? Math.round(correct/tWords.length*100) : 0;
+  }
+
+  document.getElementById('sp2Heard').textContent = '🎙 Escuché: "'+heard+'"';
+  document.getElementById('sp2Chips').innerHTML   = chips.map(c=>`<span class="sp2-chip ${c.ok?'ok':'miss'}">${c.ok?'✓':'✗'} ${c.w}</span>`).join('');
+
+  let stars,msg,cls;
+  if(pct===100){ stars='⭐⭐⭐⭐⭐'; msg='¡PERFECTO!';         cls='great'; fireConfetti(); playSound('perfect'); }
+  else if(pct>=80){ stars='⭐⭐⭐⭐'; msg='¡Muy bien!';        cls='great'; playSound('correct'); }
+  else if(pct>=60){ stars='⭐⭐⭐';   msg='¡Bien! Sigue así.'; cls='ok';    playSound('correct'); }
+  else if(pct>=30){ stars='⭐⭐';     msg='¡Inténtalo otra vez!'; cls='ok'; }
+  else             { stars='⭐';      msg=isTranslate?'¡Recuerda la traducción!':'¡Escucha y repite!'; cls='bad'; playSound('wrong'); }
+
+  document.getElementById('sp2Stars').textContent    = stars;
+  document.getElementById('sp2Msg').textContent      = pct+'% — '+msg;
+  document.getElementById('sp2Msg').className        = 'sp2-msg '+cls;
+  document.getElementById('sp2Result').classList.remove('hidden');
+
+  if(isTranslate){
+    const esEl = document.getElementById('sp2Es');
+    if(esEl) esEl.classList.remove('sp2-hidden');
+    if(pct < 100) setTimeout(()=>speak(item.en), 700);
+  } else {
+    if(pct < 100) setTimeout(()=>speak(target), 700);
   }
   trackSpeaking(pct);
 }
